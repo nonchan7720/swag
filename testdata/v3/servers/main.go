@@ -18,8 +18,13 @@ import (
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @servers.url https://test.petstore.com/v3
+// @servers.url {scheme}://{host}:{port}
 // @servers.description Test Petstore server.
+// @servers.variables.scheme.enum test
+// @servers.variables.scheme.enum test2
+// @servers.variables.scheme.default https
+// @servers.variables.host.default test.petstore.com
+// @servers.variables.port.default 443
 
 // @servers.url https://petstore.com/v3
 // @servers.description Production Petstore server.
