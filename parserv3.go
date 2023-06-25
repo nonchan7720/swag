@@ -7,11 +7,17 @@ import (
 	"go/token"
 	"net/http"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sv-tools/openapi/spec"
+)
+
+var (
+	reServersVariables          = regexp.MustCompile(`\{([^}]+)\}`)
+	reServersVariablesAttribute = regexp.MustCompile(`@servers\.variables\.([^.(]+)\.(enum|default|description|description\.markdown)`)
 )
 
 // FieldParserFactoryV3 func(ps *Parser, field *ast.Field) FieldParserV3 create FieldParser.
@@ -166,21 +172,45 @@ func (p *Parser) parseGeneralAPIInfoV3(comments []string) error {
 			p.openAPI.Info.Extensions[originalAttribute[1:]] = valueJSON
 		case "@servers.url":
 			server := spec.NewServer()
+			matches := reServersVariables.FindAllStringSubmatch(value, -1)
 			server.Spec.URL = value
+			server.Spec.Variables = make(map[string]*spec.Extendable[spec.ServerVariable])
+			for _, match := range matches {
+				server.Spec.Variables[match[1]] = spec.NewServerVariable()
+			}
 
 			p.openAPI.Servers = append(p.openAPI.Servers, server)
 		case "@servers.description":
 			server := p.openAPI.Servers[len(p.openAPI.Servers)-1]
 			server.Spec.Description = value
-		case "@servers.variables.enum":
-			p.debug.Printf("not yet implemented: @servers.variables.enum")
-		case "@servers.variables.default":
-			p.debug.Printf("not yet implemented: @servers.variables.default")
-		case "@servers.variables.description":
-			p.debug.Printf("not yet implemented: @servers.variables.description")
-		case "@servers.variables.description.markdown":
-			p.debug.Printf("not yet implemented: @servers.variables.description.markdown")
 		default:
+			if strings.HasPrefix(attr, "@servers.variables") {
+				matches := reServersVariablesAttribute.FindStringSubmatch(attr)
+				if len(matches) > 0 {
+					server := p.openAPI.Servers[len(p.openAPI.Servers)-1]
+					variablesName := matches[1]
+					attribute := matches[2]
+					v, ok := server.Spec.Variables[variablesName]
+					if !ok {
+						p.debug.Printf("Variables are not detected.")
+						continue
+					}
+					switch attribute {
+					case "enum":
+						v.Spec.Enum = append(v.Spec.Enum, value)
+					case "default":
+						v.Spec.Default = value
+					case "description":
+						v.Spec.Description = value
+					case "description.markdown":
+						commentInfo, err := getMarkdownForTag(variablesName, p.markdownFileDir)
+						if err != nil {
+							return err
+						}
+						v.Spec.Description = string(commentInfo)
+					}
+				}
+			}
 			if strings.HasPrefix(attribute, "@x-") {
 				err := p.parseExtensionsV3(value, attribute)
 				if err != nil {
